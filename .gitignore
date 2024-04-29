@@ -1,0 +1,3 @@
+*.iso
+vm-no-cdrom.xml
+vm-with-cdrom.xml

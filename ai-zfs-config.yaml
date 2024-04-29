@@ -1,0 +1,56 @@
+#cloud-config
+autoinstall:
+  version: 1
+
+  identity:
+    realname: ''
+    hostname: ubuntu
+    username: ubuntu
+    password: '$6$wdAcoXrU039hKYPd$508Qvbe7ObUnxoj15DRCkzC3qO7edjH0VV7BPNRDYK4QR8ofJaEEF2heacn0QgD.f8pO8SNp83XNdWG6tocBM1'
+
+  early-commands:
+    - apt-get install -y zfsutils-linux
+
+  late-commands:
+    # Let's avoid recreating LP: #1993318
+    - zpool set cachefile= rpool
+    - cp /etc/zfs/zpool.cache "/target/etc/zfs/"
+    - mkdir -p "/etc/zfs/zfs-list.cache" "/target/etc/zfs/zfs-list.cache"
+    - truncate -s 0 /etc/zfs/zfs-list.cache/rpool
+    - >-
+      env -i
+      ZEVENT_POOL=rpool
+      ZED_ZEDLET_DIR=/etc/zfs/zed.d
+      ZEVENT_SUBCLASS=history_event
+      ZFS=zfs
+      ZEVENT_HISTORY_INTERNAL_NAME=create
+      /etc/zfs/zed.d/history_event-zfs-list-cacher.sh
+    - >-
+      sh -c
+      'sed -E "s|\t/target/?|\t/|g" "/etc/zfs/zfs-list.cache/rpool" > "/target/etc/zfs/zfs-list.cache/rpool"'
+    - rm -f "/etc/zfs/zfs-list.cache/rpool"
+
+  packages:
+    - vim
+    - bind9-dnsutils
+  storage:
+    swap:
+      size: 0
+    config:
+      - {type: disk, id: d1, ptable: gpt, match: {size: largest},
+         wipe: superblock, grub_device: true}
+
+      - {type: partition, device: d1, number: 1, size: 1048576, wipe: superblock,
+         flag: bios_grub, preserve: false, id: d1p1}
+
+      - {type: partition, id: d1p2, number: 2, size: 1073741824, device: d1,
+         flag: boot, wipe: superblock}
+      - {type: format, id: d1p2_format, label: efi, fstype: fat32,
+         volume: d1p2}
+      - {type: mount, id: d1p2_mount, device: d1p2_format, path: /boot/efi}
+
+      - {type: partition, id: d1p3, number: 3, size: 10737418240, device: d1}
+      - {type: zpool, id: d1_rpool, pool: rpool, vdevs: [d1p3], mountpoint: /,
+         pool_properties: {ashift: 12},
+         fs_properties: {acltype: posixacl, relatime: on, canmount: on,
+                         compression: gzip, devices: off, xattr: sa}}
